@@ -1,1 +1,9 @@
-as: 1000
+bgp:
+  as: 9999
+  router-id: "192.168.0.1"
+  neighbors:
+    - address: "10.0.0.1"
+      remote-as: 64512
+
+    - address: "10.0.0.2"
+      remote-as: 64512

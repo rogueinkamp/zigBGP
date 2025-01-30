@@ -1,5 +1,7 @@
 const std = @import("std");
 const yaml = @import("yaml");
+const net = std.net;
+const posix = std.posix;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -16,7 +18,7 @@ pub fn main() !void {
     try bgp_daemon.load_config();
     while (true) {
         try bgp_daemon.run();
-        std.time.sleep(5 * std.time.ns_per_s);
+        std.time.sleep(10 * std.time.ns_per_s);
         // std.time.sleep(std.time.ns_per_s / 1000000); // Sleep for 100ms to avoid busy-looping
     }
 }
@@ -50,30 +52,46 @@ const BgpDaemon = struct {
         defer allocator.free(file_content);
         var parsed_yaml = try yaml.Yaml.load(allocator, file_content);
         defer parsed_yaml.deinit();
-        // Check if there's at least one document in the YAML
         if (parsed_yaml.docs.items.len > 0) {
             const map = parsed_yaml.docs.items[0].map;
-            // Assuming you want to get a key called "key_name"
-            if (map.get("as")) |value| {
-                // Here, 'value' would be the YAML node for "key_name".
-                // Depending on what type 'value' is, you might want to handle it differently:
+            if (map.get("bgp")) |value| {
                 switch (value) {
-                    .string => |str| {
-                        std.debug.print("The value of 'as' is: {s}\n", .{str});
+                    .map => |bgp_map| {
+                        if (bgp_map.get("as")) |as_value| {
+                            switch (as_value) {
+                                .string => |str| {
+                                    std.debug.print("The value of 'as' is: {s}\n", .{str});
+                                },
+                                .int => |int| {
+                                    std.debug.print("The value of 'as' is: {}\n", .{int});
+                                },
+                                else => {
+                                    std.debug.print("The value of 'as' is of an unsupported type, type: {s}\n", .{@typeName(@TypeOf(as_value))});
+                                },
+                            }
+                        } else {
+                            std.debug.print("'as' not found in config\n", .{});
+                        }
                     },
-                    .int => |int| {
-                        std.debug.print("The value of 'as' is: {}\n", .{int});
+                    else => {
+                        std.debug.print("'bgp' does not contain the expected structure\n", .{});
                     },
-                    // Add more cases for other types if needed
-                    else => std.debug.print("The value of 'as' is of an unsupported type\n", .{}),
                 }
             } else {
-                std.debug.print("'as' not found in the YAML\n", .{});
+                std.debug.print("'bgp' header not found in the YAML\n", .{});
             }
         }
     }
 
-    pub fn run(_: *BgpDaemon) !void {
+    pub fn listen_for_neighbors(_: *BgpDaemon) !void {
+        const address = try std.net.Address.parseIp("127.0.0.1", 5882);
+        const tpe: u32 = posix.SOCK.STREAM;
+        const protocol = posix.IPPROTO.TCP;
+        const listener = try posix.socket(address.any.family, tpe, protocol);
+        defer posix.close(listener);
+    }
+
+    pub fn run(self: *BgpDaemon) !void {
         // Main BGP processing happens here
         // 1. Handle incoming connections or messages.
         // 2. Send keepalives, updates, or notifications as needed.
@@ -81,5 +99,6 @@ const BgpDaemon = struct {
 
         // Simulated task processing
         try std.io.getStdOut().writer().print("Processing BGP tasks...\n", .{});
+        try self.listen_for_neighbors();
     }
 };
